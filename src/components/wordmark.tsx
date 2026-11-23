@@ -17,7 +17,10 @@ export function Wordmark({ size = 24, inverted, caption }: Props) {
       style={[styles.mark, { fontSize: size, lineHeight: size * 1.15 }]}
       color={inverted ? colors.cream : colors.ink}
     >
-      HB<AppText style={[styles.mark, { fontSize: size, color: colors.rust }]}>+</AppText>
+      HB
+      <AppText style={[styles.mark, { fontSize: size, color: inverted ? '#D9643A' : colors.rust }]}>
+        +
+      </AppText>
       {caption ? (
         <AppText
           style={[styles.caption, { fontSize: size * 0.5 }]}

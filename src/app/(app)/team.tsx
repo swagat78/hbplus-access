@@ -62,7 +62,7 @@ export default function TeamScreen() {
           <View style={styles.state}>
             <ActivityIndicator color={colors.rust} />
           </View>
-        ) : filtered.length === 0 ? (
+        ) : error && members.length === 0 ? null : filtered.length === 0 ? (
           <View style={styles.state}>
             <AppText variant="small">
               {query ? `No one matches “${query}”.` : 'No members yet.'}
