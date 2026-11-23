@@ -48,7 +48,11 @@ One codebase: Expo + React Native, with React Native for Web for the browser bui
      hbplusaccess://**
      exp://**
      ```
-3. **SQL Editor**: run [`supabase/migrations/20261123120000_domain_restricted_auth.sql`](supabase/migrations/20261123120000_domain_restricted_auth.sql). With the Supabase CLI you can run `supabase db push` instead.
+3. **SQL Editor**: run the two files in [`supabase/migrations/`](supabase/migrations) in order, each in a new query:
+   - `20261123120000_domain_restricted_auth.sql`: domain rules, profiles, roles
+   - `20261123130000_activity_log.sql`: activity log and dashboard numbers
+
+   With the Supabase CLI you can run `supabase db push` instead.
 4. **Authentication → Hooks → Before User Created**: choose *Postgres* and select `public.hook_before_user_created`.
    - This step is optional. Without it, the database trigger still blocks other domains, but the user gets Supabase's generic "Database error saving new user" error, which the app then maps to the restriction message.
 5. After you sign in for the first time, make yourself an admin:
@@ -146,6 +150,13 @@ The allowed domains live in a single table, `public.allowed_domains`. The hook, 
 - RLS lets members read only their own row; admins can read every row.
 - Admins see a **Team** page where they can search members and promote or demote them.
 
+### Activity log
+
+- `public.auth_events` records every real sign-in and every role change, including who made the change and the old and new roles.
+- Rows are written only by database triggers and by `set_member_role()`. Clients have no insert, update or delete rights, so the app can't forge or erase entries.
+- RLS shows admins the whole team's log (the dashboard feed and the Team page's audit log). Members see only their own entries.
+- `team_overview()` returns counts only (members, admins, active this week). The dashboard can show the team's size without exposing anyone's profile to members.
+
 ---
 
 ## Protected routes
@@ -240,4 +251,4 @@ npm run lint
 - **Put the role in the JWT** with a Custom Access Token hook. That saves a query on every app start, at the cost of role changes only taking effect when the token refreshes.
 - **Web sessions in httpOnly cookies** (server rendering or an edge function), plus a strict Content-Security-Policy.
 - **End-to-end tests:** Playwright for web and Maestro for mobile, using Google test accounts.
-- **Audit log** for role changes.
+- **Alerts on the audit log**, for example an email when someone is promoted to admin.

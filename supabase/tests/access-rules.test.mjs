@@ -122,6 +122,43 @@ r = await attempt('select id from public.profiles');
 check('anon sees nothing', !!r.error || r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
 r = await attempt(`select public.is_allowed_email('a@hbplus.fit')`);
 check('anon cannot call is_allowed_email', !!r.error, r.error ?? 'allowed!');
+r = await attempt(`select public.team_overview()`);
+check('anon cannot call team_overview', !!r.error, r.error ?? 'allowed!');
+
+// --- activity log ---
+await as(admin);
+r = await attempt(`select public.set_member_role($1, 'admin')`, [coach.id]);
+check('setting the same role again is a no-op', !r.error, r.error);
+
+r = await attempt(`select user_id, actor_id, kind, detail from public.auth_events order by id`);
+const kinds = r.rows?.map((e) => e.kind).join(',');
+check('admin sees all activity (2 first sign-ins, 1 later sign-in, 1 role change)',
+  kinds === 'signed_in,signed_in,signed_in,role_changed', r.error ?? kinds);
+const change = r.rows?.find((e) => e.kind === 'role_changed');
+check('role change records actor and from/to',
+  change?.actor_id === admin.id && change?.user_id === coach.id && change?.detail.from === 'user' && change?.detail.to === 'admin',
+  JSON.stringify(change));
+
+r = await attempt(`select public.team_overview() v`);
+check('team_overview counts the team', JSON.stringify(r.rows?.[0]?.v) === JSON.stringify({ admins: 2, members: 2, active_week: 2 }),
+  r.error ?? JSON.stringify(r.rows[0].v));
+
+await as(null);
+await db.exec(`update public.profiles set role = 'user' where id = '${coach.id}'`);
+await as(coach);
+r = await attempt(`select user_id from public.auth_events`);
+check('member only sees their own activity', r.rows?.length === 3 && r.rows.every((e) => e.user_id === coach.id),
+  r.error ?? `${r.rows.length} rows`);
+r = await attempt(`insert into public.auth_events (user_id, kind) values ($1, 'signed_in')`, [coach.id]);
+check('member cannot forge activity', !!r.error, r.error ?? 'inserted!');
+r = await attempt(`select public.team_overview() v`);
+check('member can read team counts', r.rows?.[0]?.v?.members === 2, r.error);
+
+await as({ id: coach.id, email: 'coach@gmail.com' });
+r = await attempt(`select public.team_overview()`);
+check('team_overview refuses a non-allowed token', !!r.error, r.error ?? 'allowed!');
+r = await attempt(`select id from public.auth_events`);
+check('non-allowed token reads no activity', r.rows?.length === 0, r.error ?? `${r.rows.length} rows`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

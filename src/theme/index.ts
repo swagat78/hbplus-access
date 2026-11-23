@@ -48,6 +48,8 @@ export const fonts = {
 } as const;
 
 export const layout = {
-  maxWidth: 1120,
+  maxWidth: 1320,
   wideBreakpoint: 960,
+  sidebarBreakpoint: 1100,
+  sidebarWidth: 264,
 } as const;

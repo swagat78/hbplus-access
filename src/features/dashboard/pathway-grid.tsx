@@ -1,8 +1,8 @@
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
-import { useLayout } from '@/hooks/use-layout';
-import { colors, fonts, layout, radius, space } from '@/theme';
+import { colors, fonts, radius, space } from '@/theme';
 
 import { PATHWAYS, type Pillar } from './pathways';
 
@@ -15,11 +15,11 @@ const PILLAR_COLORS: Record<Pillar, { bg: string; fg: string }> = {
 };
 
 export function PathwayGrid() {
-  const { width, gutter } = useLayout();
+  // Sized from its own width so it works in any column, not just full-page.
+  const [width, setWidth] = useState(0);
 
-  const columns = width >= 960 ? 4 : width >= 600 ? 2 : 1;
-  const inner = Math.min(width, layout.maxWidth) - gutter * 2;
-  const cardWidth = (inner - GAP * (columns - 1)) / columns;
+  const columns = width >= 900 ? 4 : width >= 520 ? 2 : 1;
+  const cardWidth = width ? (width - GAP * (columns - 1)) / columns : undefined;
 
   return (
     <View style={styles.section}>
@@ -28,7 +28,7 @@ export function PathwayGrid() {
         <AppText variant="small">What clients come to HB+ for, and which pillars each one draws on.</AppText>
       </View>
 
-      <View style={styles.grid}>
+      <View style={styles.grid} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
         {PATHWAYS.map((pathway) => (
           <View key={pathway.name} style={[styles.card, { width: cardWidth }]}>
             <AppText style={styles.name}>{pathway.name}</AppText>

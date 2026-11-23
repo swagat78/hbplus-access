@@ -5,10 +5,14 @@ import { layout } from '@/theme';
 export function useLayout() {
   const { width } = useWindowDimensions();
   const isWide = width >= layout.wideBreakpoint;
+  const hasSidebar = width >= layout.sidebarBreakpoint;
+  const contentWidth = hasSidebar ? width - layout.sidebarWidth : width;
 
   return {
     width,
     isWide,
-    gutter: width < 600 ? 16 : 32,
+    hasSidebar,
+    contentWidth,
+    gutter: width < 600 ? 16 : hasSidebar ? 40 : 32,
   };
 }

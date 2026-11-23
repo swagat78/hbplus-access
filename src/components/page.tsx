@@ -8,14 +8,14 @@ import { colors, layout, space } from '@/theme';
 import { AppText } from './app-text';
 
 type Props = {
-  eyebrow: string;
-  title: string;
+  eyebrow?: string;
+  title?: string;
   intro?: ReactNode;
   children: ReactNode;
 };
 
 export function Page({ eyebrow, title, intro, children }: Props) {
-  const { gutter, isWide } = useLayout();
+  const { gutter, isWide, hasSidebar } = useLayout();
   const insets = useSafeAreaInsets();
 
   return (
@@ -24,16 +24,26 @@ export function Page({ eyebrow, title, intro, children }: Props) {
       contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={[styles.inner, { paddingHorizontal: gutter, paddingTop: isWide ? space.xxxl : space.xl }]}>
-        <View style={styles.hero}>
-          <AppText variant="eyebrow">{eyebrow}</AppText>
-          <AppText variant={isWide ? 'display' : 'title'}>{title}</AppText>
-          {intro ? (
-            <AppText variant="body" color={colors.muted} style={styles.intro}>
-              {intro}
-            </AppText>
-          ) : null}
-        </View>
+      <View
+        style={[
+          styles.inner,
+          {
+            paddingHorizontal: gutter,
+            paddingTop: hasSidebar ? space.xxl + space.sm : isWide ? space.xxl : space.xl,
+          },
+        ]}
+      >
+        {title ? (
+          <View style={styles.hero}>
+            {eyebrow ? <AppText variant="eyebrow">{eyebrow}</AppText> : null}
+            <AppText variant={isWide ? 'display' : 'title'}>{title}</AppText>
+            {intro ? (
+              <AppText variant="body" color={colors.muted} style={styles.intro}>
+                {intro}
+              </AppText>
+            ) : null}
+          </View>
+        ) : null}
         {children}
       </View>
     </ScrollView>
@@ -49,10 +59,11 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: layout.maxWidth,
     alignSelf: 'center',
-    gap: space.xxl,
+    gap: space.xl,
   },
   hero: {
     gap: space.sm,
+    marginBottom: space.sm,
   },
   intro: {
     maxWidth: 620,

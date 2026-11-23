@@ -5,6 +5,7 @@ import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Notice } from '@/components/notice';
 import { Page } from '@/components/page';
+import { ActivityCard } from '@/features/activity/activity-card';
 import { useAuth } from '@/features/auth/auth-provider';
 import { MemberRow } from '@/features/team/member-row';
 import { useTeamMembers } from '@/features/team/use-team-members';
@@ -84,6 +85,15 @@ export default function TeamScreen() {
           </View>
         )}
       </Card>
+
+      {profile ? (
+        <ActivityCard
+          title="Audit log"
+          caption="Every sign-in and role change, written by the database. Nobody can edit or delete these from the app."
+          currentUserId={profile.id}
+          limit={25}
+        />
+      ) : null}
     </Page>
   );
 }
