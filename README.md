@@ -16,6 +16,7 @@ One codebase: Expo + React Native, with React Native for Web for the browser bui
 - [Authentication flow](#authentication-flow)
 - [How the domain restriction works](#how-the-domain-restriction-works)
 - [Roles](#roles-admin--member)
+- [Admin panel](#admin-panel)
 - [Protected routes](#protected-routes)
 - [Token handling](#token-handling)
 - [Project structure](#project-structure)
@@ -48,9 +49,10 @@ One codebase: Expo + React Native, with React Native for Web for the browser bui
      hbplusaccess://**
      exp://**
      ```
-3. **SQL Editor**: run the two files in [`supabase/migrations/`](supabase/migrations) in order, each in a new query:
+3. **SQL Editor**: run the three files in [`supabase/migrations/`](supabase/migrations) in order, each in a new query:
    - `20261123120000_domain_restricted_auth.sql`: domain rules, profiles, roles
    - `20261123130000_activity_log.sql`: activity log and dashboard numbers
+   - `20261124090000_admin_panel.sql`: suspend / restore, domains managed from the app, chart data
 
    With the Supabase CLI you can run `supabase db push` instead.
 4. **Authentication → Hooks → Before User Created**: choose *Postgres* and select `public.hook_before_user_created`.
@@ -110,10 +112,11 @@ sequenceDiagram
 **Verification after Google.** Every new session goes through `admit()` in [`auth-provider.tsx`](src/features/auth/auth-provider.tsx):
 
 1. `getUser()` asks the auth server who the token belongs to. `getSession()` only reads local storage, so its result isn't trusted.
-2. The email domain must match `@hbplus.fit` exactly.
+2. The email domain must exactly match one on the allowed list (`@hbplus.fit` unless an admin has added more).
 3. The user's `profiles` row must be readable, and RLS only allows that for an allowed domain. This row is also where the role comes from.
+4. The profile must not be suspended.
 
-If any of these checks fails, the app signs the user out locally, revokes the refresh token, and shows the error. Token refreshes for a user who has already passed don't re-run the checks.
+If any of these checks fails, the app signs the user out locally, revokes the refresh token, and shows the error. After that, a lighter re-check (just the profile) runs on each token refresh and whenever the user comes back to the app, at most every 30 seconds, so a suspension, a role change or a removed domain applies without a fresh login.
 
 ---
 
@@ -123,12 +126,12 @@ The check runs in four places. Only the last three are real security; the client
 
 | # | Where | What it does |
 |---|---|---|
-| 1 | **Client:** [`src/lib/domain.ts`](src/lib/domain.ts) | `isAllowedEmail()` runs on the user returned by `getUser()`. On a mismatch it signs the user out and shows the error. |
+| 1 | **Client:** [`src/lib/domain.ts`](src/lib/domain.ts) | `isAllowedEmail()` runs on the user returned by `getUser()`, against the list from `allowed_domain_list()` (falling back to `EXPO_PUBLIC_ALLOWED_DOMAIN`). On a mismatch it signs the user out and shows the error. |
 | 2 | **Auth hook:** `hook_before_user_created` | Supabase calls this before creating any user. A non-allowed domain gets a `403` with the restriction message, so no account is ever created. |
 | 3 | **Trigger:** `handle_new_user` on `auth.users` | Raises an exception for a non-allowed domain. This still works if the hook isn't enabled. |
 | 4 | **RLS:** policies on `profiles` | They check `auth.jwt() ->> 'email'`, so even a session that somehow exists for another domain reads nothing. |
 
-The allowed domains live in a single table, `public.allowed_domains`. The hook, the trigger and the RLS policies all call `public.is_allowed_email()`, so they can't drift apart. To allow a second domain, add a row to the table and update `EXPO_PUBLIC_ALLOWED_DOMAIN`.
+The allowed domains live in a single table, `public.allowed_domains`. The hook, the trigger, the RLS policies and the app all read that one list, so they can't drift apart. Admins manage it from the **Access rules** tab of the admin panel; `EXPO_PUBLIC_ALLOWED_DOMAIN` only sets the domain the sign-in screen mentions.
 
 **Matching is exact.** The domain is everything after the last `@`, lowercased, and must equal the allowed domain. A plain `endsWith('hbplus.fit')` would let in `x@nothbplus.fit`. These cases are covered by tests on both the TypeScript and SQL side:
 
@@ -148,14 +151,36 @@ The allowed domains live in a single table, `public.allowed_domains`. The hook, 
 - Clients have no `INSERT`, `UPDATE` or `DELETE` permission on `profiles` at all.
 - Roles change only through `set_member_role()`, a `security definer` function. It checks that the caller is an admin on an allowed domain, and it refuses to let an admin change their own role. That also guarantees at least one admin always remains.
 - RLS lets members read only their own row; admins can read every row.
-- Admins see a **Team** page where they can search members and promote or demote them.
+- A **suspended** admin keeps the role on paper but loses every admin power: `is_admin()` requires an active profile.
 
 ### Activity log
 
-- `public.auth_events` records every real sign-in and every role change, including who made the change and the old and new roles.
-- Rows are written only by database triggers and by `set_member_role()`. Clients have no insert, update or delete rights, so the app can't forge or erase entries.
-- RLS shows admins the whole team's log (the dashboard feed and the Team page's audit log). Members see only their own entries.
-- `team_overview()` returns counts only (members, admins, active this week). The dashboard can show the team's size without exposing anyone's profile to members.
+- `public.auth_events` records every real sign-in, role change, suspension and domain change, including who made it and the before/after values.
+- Rows are written only by database triggers and the admin functions. Clients have no insert, update or delete rights, so the app can't forge or erase entries, admins included.
+- RLS shows admins the whole team's log. Members see only their own entries.
+- `team_overview()` returns counts plus a small directory (display name and photo of the six most recently active people, no emails). It's a deliberate, documented exception to "members only see their own row", so the dashboard can show who's around.
+
+---
+
+## Admin panel
+
+`/admin` is admin-only (route guard in the app, plus every function below re-checks in Postgres). The tab lives in the URL (`/admin?tab=members`) so it survives a refresh and the sidebar can link straight to it.
+
+| Tab | What an admin can do | Enforced by |
+|---|---|---|
+| **Overview** | Headline numbers, team sign-ins per day (7 / 14 / 30 days), recent admin actions | `team_overview()`, `sign_ins_by_day()` |
+| **Members** | Search and filter; make or remove admins; suspend or restore access | `set_member_role()`, `set_member_status()` |
+| **Access rules** | Add or remove allowed email domains | `add_allowed_domain()`, `remove_allowed_domain()` |
+| **Audit log** | Every event, filterable, newest first | RLS on `auth_events` |
+
+Guard rails, all in SQL so the UI can't skip them:
+
+- An admin can't change their own role or suspend themselves, so there's always at least one working admin.
+- An admin can't remove the domain their own account uses, so the list can never be emptied from the app.
+- Public mailbox providers (`gmail.com`, `outlook.com`, …) can't be added from the panel. Allowing one would let anyone in; if that's ever really wanted, it has to be done deliberately in SQL.
+- Domains are validated with the same pattern in the database and in the form.
+
+**Suspension** blocks a member at the data layer the moment it's saved: RLS returns nothing and every function refuses them. Their app notices the next time it checks in (on the hourly token refresh, or when they come back to the tab) and signs them out with an explanation. Role changes are picked up the same way, so nobody has to sign out and back in.
 
 ---
 
@@ -168,13 +193,13 @@ Routing uses Expo Router's `Stack.Protected` ([`src/app/_layout.tsx`](src/app/_l
   <Stack.Screen name="login" />
 </Stack.Protected>
 <Stack.Protected guard={signedIn} redirectTo="/login">
-  <Stack.Screen name="(app)" />          {/* /dashboard, /team */}
+  <Stack.Screen name="(app)" />          {/* /dashboard, /admin */}
 </Stack.Protected>
 ```
 
 - Opening `/dashboard` directly while signed out redirects to `/login`.
-- Opening `/team` as a member redirects to `/dashboard`.
-- The navigator isn't mounted until the stored session has been restored. Without that, refreshing `/team` as an admin would briefly look signed-out and lose the URL.
+- Opening `/admin` as a member redirects to `/dashboard`.
+- The navigator isn't mounted until the stored session has been restored. Without that, refreshing `/admin` as an admin would briefly look signed-out and lose the URL.
 - When a guard turns false (for example on sign out), Expo Router also removes those screens from history, so the Back button can't return to them.
 - Netlify serves `index.html` for every path, so a direct URL still reaches the router's guards instead of a 404.
 
@@ -202,36 +227,42 @@ src/
     index.tsx               # → /dashboard or /login
     login.tsx
     (app)/
-      _layout.tsx           # header + admin-only guard
+      _layout.tsx           # sidebar (wide) or top bar + slide-in menu (phones), admin-only guard
       dashboard.tsx
-      team.tsx              # admin only
+      admin.tsx             # admin only; ?tab=overview|members|access|audit
   features/
-    auth/                   # provider, Google sign-in (.ts native / .web.ts), error mapping
-    dashboard/
-    team/
+    auth/                   # provider, access checks, Google sign-in (.ts native / .web.ts)
+    shell/                  # nav items, collapsed-sidebar / drawer state
+    dashboard/              # hero, team card, pathways, profile, session ring
+    admin/                  # members, access rules, audit log, overview
+    activity/               # activity feed shared by dashboard and admin
+    charts/                 # daily sign-ins chart (+ table view)
   components/               # UI pieces shared across screens
+  hooks/
   lib/                      # supabase client, domain check, storage, helpers
   theme/                    # colours, spacing, type
   types/
 supabase/
-  migrations/               # schema, RLS, hook, trigger, role function
+  migrations/               # schema, RLS, hook, trigger, admin functions
   tests/                    # access-rule checks against an in-memory Postgres
 ```
 
 Platform-specific behaviour uses `.web.ts` files (`google-sign-in.web.ts`, `auth-storage.web.ts`) instead of `Platform.OS` branches.
+
+**Motion.** Entrances, the login page's background and counters, the sidebar collapse and the chart bars are animated with Reanimated. All of it is skipped when the OS asks for reduced motion.
 
 ---
 
 ## Tests
 
 ```bash
-npm test          # Jest: domain matching, URL parsing, error mapping
-npm run test:db   # runs the migration on PGlite and checks the access rules
+npm test          # Jest: domain matching and validation, URL parsing, error mapping
+npm run test:db   # runs every migration on PGlite and checks 70 access rules
 npm run typecheck
 npm run lint
 ```
 
-`test:db` creates users through the trigger and calls the hook as `supabase_auth_admin`. It then runs queries as `anon`, as a member, as an admin, and as a token carrying a non-allowed email, and checks that each sees or changes only what it should.
+`test:db` creates users through the trigger and calls the hook as `supabase_auth_admin`. It then acts as `anon`, as a member, as an admin, as a suspended member, as a suspended admin, and as a token carrying a non-allowed email, and checks that each sees or changes only what it should: roles, suspensions, domain changes and their guard rails, the audit log, and the chart data.
 
 ---
 
@@ -250,5 +281,6 @@ npm run lint
 - **Check Google's `hd` claim on the server.** Today the check is on the email address. A consumer Google account can be registered with a work email, and the `hd` claim is only present on accounts managed by the Workspace. Checking it in the hook would close that gap.
 - **Put the role in the JWT** with a Custom Access Token hook. That saves a query on every app start, at the cost of role changes only taking effect when the token refreshes.
 - **Web sessions in httpOnly cookies** (server rendering or an edge function), plus a strict Content-Security-Policy.
+- **Suspension at the Auth level too.** Today a suspended member can still get a session from Google; it just can't read anything, and the app signs them out. Banning them in Supabase Auth itself needs the service-role key, so it belongs in an Edge Function, never in the app.
 - **End-to-end tests:** Playwright for web and Maestro for mobile, using Google test accounts.
 - **Alerts on the audit log**, for example an email when someone is promoted to admin.

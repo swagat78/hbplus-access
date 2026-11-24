@@ -17,7 +17,7 @@ import { TeamCard } from '@/features/dashboard/team-card';
 import { useTeamOverview } from '@/features/dashboard/use-team-overview';
 import { useLayout } from '@/hooks/use-layout';
 import { useNow } from '@/hooks/use-now';
-import { ALLOWED_DOMAIN } from '@/lib/domain';
+import { ALLOWED_DOMAIN, getEmailDomain } from '@/lib/domain';
 import { minutesUntil } from '@/lib/format';
 import { space } from '@/theme';
 
@@ -100,7 +100,7 @@ export default function DashboardScreen() {
             />
           </Reveal>
           <Reveal delay={280}>
-            <AccessChecks />
+            <AccessChecks domain={getEmailDomain(profile.email) ?? ALLOWED_DOMAIN} />
           </Reveal>
         </View>
 
