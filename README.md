@@ -191,7 +191,7 @@ Where the web and mobile versions need different code, there's a `.web.ts` file 
 
 ```bash
 npm test          # Jest: domain matching, URL parsing, error messages
-npm run test:db   # runs every migration on PGlite and checks 76 access rules
+npm run test:db   # runs every migration on PGlite and checks 77 access rules
 npm run typecheck
 npm run lint
 ```
