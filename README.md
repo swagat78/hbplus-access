@@ -20,13 +20,13 @@ You'll need Node 22+, a Supabase project (the free tier is fine) and a Google Cl
 
 **Google Cloud**
 
-1. In APIs & Services → OAuth consent screen, pick **External**, add the `openid`, `email` and `profile` scopes and publish it. Don't pick Internal: Google would then block Gmail accounts on its own screen, and the app would never get to show its own error message.
+1. In APIs & Services → OAuth consent screen (called Google Auth Platform in the newer console), pick **External** and add the `openid`, `email` and `profile` scopes. Then publish the app so its status is **In production**. While it's still in Testing, only the test users you've listed can log in, and everyone else gets stopped on Google's screen. Don't pick Internal either: Google would block Gmail accounts itself, and the app would never get to show its own error message.
 2. Create an OAuth client ID of type **Web application**.
 3. Add `https://<project-ref>.supabase.co/auth/v1/callback` as a redirect URI.
 
 **Supabase**
 
-1. Authentication → Providers → Google: switch it on and paste in the client ID and secret.
+1. Authentication → Sign In / Providers → Google: switch it on and paste in the client ID and secret.
 2. Authentication → URL Configuration: set the Site URL to your Netlify URL (or `http://localhost:8081` locally) and add these redirect URLs:
    ```
    http://localhost:8081/**
@@ -40,8 +40,8 @@ You'll need Node 22+, a Supabase project (the free tier is fine) and a Google Cl
    3. `20261124090000_admin_panel.sql`: suspending members, managing domains, chart data
    4. `20261124150000_member_insights.sql`: personal sign-in history, plus a backfill of older sign-ins
 
-   If the dashboard tiles show a dash instead of numbers, one of these hasn't been run. (`supabase db push` does the same thing if you use the CLI.)
-4. Authentication → Hooks: add a **Before User Created** hook, type Postgres, function `public.hook_before_user_created`. This one's optional. Without it the trigger still blocks other domains, Supabase just returns a vaguer error, which the app turns back into the right message.
+   If you use the Supabase CLI, `supabase db push` runs them all for you. If the dashboard tiles show a dash instead of numbers later on, one of these hasn't been run.
+4. Authentication → Auth Hooks → Add hook → **Before User Created**, type Postgres, function `public.hook_before_user_created`. This one's optional. Without it the trigger still blocks other domains, Supabase just returns a vaguer error, which the app turns back into the right message.
 5. Log in once, then make yourself an admin:
    ```sql
    update public.profiles set role = 'admin' where email = 'you@hbplus.fit';
