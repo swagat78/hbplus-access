@@ -1,4 +1,4 @@
-import { getEmailDomain, isAllowedEmail } from '../domain';
+import { getEmailDomain, isAllowedEmail, isValidDomain } from '../domain';
 
 describe('isAllowedEmail', () => {
   it.each([
@@ -28,6 +28,31 @@ describe('isAllowedEmail', () => {
   it('normalises the configured domain', () => {
     expect(isAllowedEmail('a@hbplus.fit', ' @HBPLUS.FIT ')).toBe(true);
   });
+
+  it('accepts any domain from a list (what the database returns)', () => {
+    const list = ['hbplus.fit', 'hop.studio'];
+    expect(isAllowedEmail('coach@hop.studio', list)).toBe(true);
+    expect(isAllowedEmail('coach@hbplus.fit', list)).toBe(true);
+    expect(isAllowedEmail('coach@gmail.com', list)).toBe(false);
+    expect(isAllowedEmail('coach@studio', list)).toBe(false);
+  });
+
+  it('lets nobody in with an empty list', () => {
+    expect(isAllowedEmail('coach@hbplus.fit', [])).toBe(false);
+  });
+});
+
+describe('isValidDomain', () => {
+  it.each(['hbplus.fit', '@hbplus.fit', 'mail.hop-studio.co.uk', ' HBPLUS.FIT '])('accepts %p', (value) => {
+    expect(isValidDomain(value)).toBe(true);
+  });
+
+  it.each(['localhost', 'hbplus', '-bad.com', 'bad-.com', 'a b.com', 'x@y.com', '', 'hbplus.fit.'])(
+    'rejects %p',
+    (value) => {
+      expect(isValidDomain(value)).toBe(false);
+    },
+  );
 });
 
 describe('getEmailDomain', () => {

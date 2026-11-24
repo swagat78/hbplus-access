@@ -9,13 +9,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { DOMAIN_RESTRICTED_MESSAGE, isAllowedEmail } from '@/lib/domain';
 import { env } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/types/database';
 
+import { accessProblem, loadAllowedDomains, loadProfile } from './access';
 import { toAuthMessage } from './errors';
 import { signInWithGoogle, takeRedirectError, type SignInOutcome } from './google-sign-in';
 
@@ -35,8 +36,9 @@ type AuthContextValue = {
   clearError: () => void;
 };
 
-const MISSING_PROFILE_MESSAGE =
-  "Your Google account checks out, but there's no team profile for it yet. Please contact an HB+ admin.";
+// How often coming back to the app re-reads your profile, so a role change
+// or a suspension by an admin applies without signing out and in again.
+const RECHECK_INTERVAL_MS = 30_000;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -58,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const admittedUserId = useRef<string | null>(null);
   // Bumped on every new check so a slow, stale one can't overwrite a newer result.
   const checkId = useRef(0);
+  const lastRecheck = useRef(0);
 
   const reject = useCallback(async (message: string) => {
     admittedUserId.current = null;
@@ -82,27 +85,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userError) throw userError;
         if (id !== checkId.current) return;
 
-        if (!isAllowedEmail(data.user?.email)) {
+        // Independent reads, so they go out together. RLS only returns the
+        // profile row for an allowed domain, which makes it a server-side
+        // check as well as the source of the role.
+        const [domains, { data: row, error: profileError }] = await Promise.all([
+          loadAllowedDomains(),
+          loadProfile(data.user.id),
+        ]);
+        if (id !== checkId.current) return;
+
+        if (!isAllowedEmail(data.user.email, domains)) {
           await reject(DOMAIN_RESTRICTED_MESSAGE);
           return;
         }
-
-        // RLS only returns this row for an allowed domain, so this is a
-        // server-side check as well as the source of the user's role.
-        const { data: row, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .maybeSingle();
         if (profileError) throw profileError;
-        if (id !== checkId.current) return;
 
-        if (!row) {
-          await reject(MISSING_PROFILE_MESSAGE);
+        const problem = accessProblem(row);
+        if (problem || !row) {
+          await reject(problem ?? DOMAIN_RESTRICTED_MESSAGE);
           return;
         }
 
         admittedUserId.current = data.user.id;
+        lastRecheck.current = Date.now();
         setSession(next);
         setProfile(row);
         setError(null);
@@ -114,10 +119,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [reject],
   );
 
+  // Lighter than admit(): the identity is already proven, this only picks up
+  // changes an admin made since (role, suspension, domain removed).
+  const recheck = useCallback(async () => {
+    const userId = admittedUserId.current;
+    if (!userId || Date.now() - lastRecheck.current < RECHECK_INTERVAL_MS) return;
+    lastRecheck.current = Date.now();
+
+    const { data: row, error: profileError } = await loadProfile(userId);
+    // A failed read is usually the network. The next focus tries again.
+    if (profileError || admittedUserId.current !== userId) return;
+
+    // No row any more means RLS hid it, i.e. the domain was taken off the list.
+    const problem = row ? accessProblem(row) : DOMAIN_RESTRICTED_MESSAGE;
+    if (problem || !row) {
+      await reject(problem ?? DOMAIN_RESTRICTED_MESSAGE);
+      return;
+    }
+    setProfile(row);
+  }, [reject]);
+
   useEffect(() => {
     if (!env.isConfigured) return;
 
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (!next) {
         checkId.current++;
         admittedUserId.current = null;
@@ -127,18 +152,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // supabase-js holds a lock while this callback runs, and any Supabase
+      // call inside it would wait on that lock forever. Work happens after.
       if (next.user.id === admittedUserId.current) {
         setSession(next);
+        if (event === 'TOKEN_REFRESHED') setTimeout(() => void recheck(), 0);
         return;
       }
 
-      // supabase-js holds a lock while this callback runs, and getUser()
-      // inside it would wait on that lock forever. Run the checks after.
       setTimeout(() => void admit(next), 0);
     });
 
     return () => data.subscription.unsubscribe();
-  }, [admit]);
+  }, [admit, recheck]);
+
+  // Coming back to the tab / app is the natural moment to pick up changes.
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const onVisible = () => {
+        if (document.visibilityState === 'visible') void recheck();
+      };
+      document.addEventListener('visibilitychange', onVisible);
+      return () => document.removeEventListener('visibilitychange', onVisible);
+    }
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void recheck();
+    });
+    return () => subscription.remove();
+  }, [recheck]);
 
   // Pressing Back on Google's page can restore this page from the bfcache
   // with the button still spinning.
@@ -179,7 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status,
       session,
       profile,
-      isAdmin: status === 'signed-in' && profile?.role === 'admin',
+      isAdmin: status === 'signed-in' && profile?.role === 'admin' && profile.status !== 'suspended',
       isSigningIn,
       error,
       signIn,
