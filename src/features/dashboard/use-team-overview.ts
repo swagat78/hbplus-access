@@ -13,9 +13,12 @@ export function useTeamOverview() {
     supabase.rpc('team_overview').then(({ data, error }) => {
       if (cancelled) return;
       // A failure only leaves the tiles showing "—"; it isn't worth an
-      // error banner on the home screen.
-      if (error || !data) setFailed(true);
-      else setOverview(data);
+      // error banner on the home screen. It is worth a line in the console,
+      // or a missing migration goes unnoticed.
+      if (error || !data) {
+        if (__DEV__ && error) console.warn('[team_overview]', error.code, error.message);
+        setFailed(true);
+      } else setOverview(data);
     });
 
     return () => {

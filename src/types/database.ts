@@ -27,7 +27,8 @@ export type AuthEvent = {
   user_id: string | null;
   actor_id: string | null;
   kind: AuthEventKind;
-  detail: { from?: string; to?: string; domain?: string };
+  // source is set on sign-ins copied in from before the log existed.
+  detail: { from?: string; to?: string; domain?: string; source?: string };
   created_at: string;
 };
 
@@ -121,7 +122,7 @@ export type Database = {
         Returns: undefined;
       };
       sign_ins_by_day: {
-        Args: { days?: number; tz?: string };
+        Args: { days?: number; tz?: string; only_mine?: boolean };
         Returns: DailySignIns[];
       };
     };

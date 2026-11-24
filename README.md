@@ -11,7 +11,7 @@ Built with Expo SDK 58 and Expo Router, React Native for Web, Supabase (Auth and
 ## What's in it
 
 - A login page with a "Login with Google" button, a loading state and proper error messages
-- A dashboard that only signed-in `@hbplus.fit` users can open, plus logout
+- A dashboard that only signed-in `@hbplus.fit` users can open, plus logout. Members see their own sign-ins and streak, admins see team numbers, and everyone gets a 12-week calendar of their own sign-ins
 - Admin and member roles, stored in the database
 - An admin panel for managing members, allowed domains and the audit log (a bit beyond the brief, but it made the roles actually useful)
 - The same code on web and mobile, with `.web.ts` files where the platforms need different behaviour
@@ -47,10 +47,13 @@ You'll need Node 22 or newer, a Supabase project (the free tier is fine) and a G
      hbplusaccess://**
      exp://**
      ```
-3. In the **SQL Editor**, run the three files from [`supabase/migrations/`](supabase/migrations) in this order, each in a new query:
+3. In the **SQL Editor**, run the four files from [`supabase/migrations/`](supabase/migrations) in this order, each in a new query:
    1. `20261123120000_domain_restricted_auth.sql`: allowed domains, profiles and roles
    2. `20261123130000_activity_log.sql`: the activity log and the dashboard numbers
    3. `20261124090000_admin_panel.sql`: suspending members, managing domains, chart data
+   4. `20261124150000_member_insights.sql`: personal sign-in history, and a backfill of sign-ins made before the activity log existed
+
+   If the dashboard shows "—" in its tiles, one of these hasn't been run. In development the browser console says which function is missing.
 
    If you use the Supabase CLI, `supabase db push` does the same.
 4. In **Authentication → Hooks → Before User Created**, choose Postgres and select `public.hook_before_user_created`.
@@ -188,7 +191,7 @@ Where the web and mobile versions need different code, there's a `.web.ts` file 
 
 ```bash
 npm test          # Jest: domain matching, URL parsing, error messages
-npm run test:db   # runs every migration on PGlite and checks 70 access rules
+npm run test:db   # runs every migration on PGlite and checks 76 access rules
 npm run typecheck
 npm run lint
 ```
@@ -209,4 +212,5 @@ npm run lint
 - **Put the role in the JWT** with a custom access token hook, which saves a database query when the app starts.
 - **Move web sessions to httpOnly cookies** and add a Content-Security-Policy.
 - **Block suspended users in Supabase Auth itself.** That needs the service-role key, so it would live in an Edge Function, never in the app.
+- **Count visits, not only sign-ins.** The streak, the calendar and "active this week" count Google sign-ins. A session refreshes itself, so someone who stays signed in and uses the app every day only shows up when they sign in again. A small `record_visit()` function, called when the app opens, would fix that.
 - **End-to-end tests**, with Playwright for the web and Maestro for mobile.

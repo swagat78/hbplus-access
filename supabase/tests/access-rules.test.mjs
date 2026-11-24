@@ -177,6 +177,11 @@ r = await attempt(`select sum(sign_ins)::int n from public.sign_ins_by_day(14, '
 check('member chart only counts their own sign-ins', r.rows?.[0]?.n === 2, r.error ?? JSON.stringify(r.rows[0]));
 r = await attempt(`select count(*)::int n from public.sign_ins_by_day(500, 'UTC')`);
 check('chart range is capped at 90 days', r.rows?.[0]?.n === 90, r.error ?? JSON.stringify(r.rows[0]));
+r = await attempt(`select sum(sign_ins)::int n from public.sign_ins_by_day(14, 'UTC', false)`);
+check('only_mine = false does not widen a member\'s chart', r.rows?.[0]?.n === 2, r.error ?? JSON.stringify(r.rows[0]));
+await as(admin);
+r = await attempt(`select sum(sign_ins)::int n from public.sign_ins_by_day(14, 'UTC', true)`);
+check('only_mine narrows an admin to their own sign-ins', r.rows?.[0]?.n === 1, r.error ?? JSON.stringify(r.rows[0]));
 
 // --- suspend / restore ---
 await as(coach);
@@ -261,6 +266,37 @@ for (const fn of ['allowed_domain_list()', 'sign_ins_by_day()', `set_member_stat
   check(`anon cannot call ${fn.split('(')[0]}`, /permission denied/.test(r.error ?? ''), r.error ?? 'allowed!');
 }
 await db.exec('reset role');
+
+// --- backfill of sign-ins made before the activity log existed ---
+// The coach's log starts with one sign-in today; the admin's is empty. Give
+// Supabase's audit trail a stand-in and run the insights migration again,
+// the way it runs on a project where the log has been on for a while.
+await db.exec(`
+  delete from public.auth_events where kind = 'signed_in';
+  insert into public.auth_events (user_id, kind, created_at) values ('${coach.id}', 'signed_in', now());
+  create table auth.audit_log_entries (id uuid default gen_random_uuid(), payload json, created_at timestamptz);
+  insert into auth.audit_log_entries (payload, created_at) values
+    (json_build_object('action', 'login', 'actor_id', '${coach.id}'), now() - interval '3 days'),
+    (json_build_object('action', 'login', 'actor_id', '${coach.id}'), now() - interval '1 day'),
+    (json_build_object('action', 'token_refreshed', 'actor_id', '${coach.id}'), now() - interval '1 day'),
+    (json_build_object('action', 'login', 'actor_id', '${coach.id}'), now() - interval '2 seconds'),
+    (json_build_object('action', 'login', 'actor_id', gen_random_uuid()), now() - interval '2 days');
+`);
+const insights = fs.readFileSync(path.join(dir, migrations.find((f) => f.includes('member_insights'))), 'utf8');
+await db.exec(insights);
+r = await attempt(`select user_id, detail ->> 'source' src from public.auth_events where kind = 'signed_in' order by created_at`);
+const fromAudit = r.rows?.filter((e) => e.user_id === coach.id && e.src === 'auth_audit_log').length;
+check('backfill copies older logins (not token refreshes) even when the log already has some',
+  fromAudit === 2, r.error ?? JSON.stringify(r.rows));
+check('backfill does not copy the login the log already recorded',
+  r.rows?.filter((e) => e.user_id === coach.id).length === 3, r.error ?? JSON.stringify(r.rows));
+const fromProfile = r.rows?.filter((e) => e.user_id === admin.id && e.src === 'profile').length;
+check('backfill falls back to the profile when there is no audit trail', fromProfile === 1,
+  r.error ?? JSON.stringify(r.rows));
+check('backfill ignores logins from accounts with no profile', r.rows?.length === 4, r.error ?? `${r.rows.length} rows`);
+await db.exec(insights);
+r = await attempt(`select count(*)::int n from public.auth_events where kind = 'signed_in'`);
+check('running the backfill again adds nothing', r.rows?.[0]?.n === 4, r.error ?? JSON.stringify(r.rows[0]));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

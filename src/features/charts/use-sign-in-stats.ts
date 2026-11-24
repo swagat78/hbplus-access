@@ -12,45 +12,56 @@ function timeZone() {
 }
 
 type State = {
-  days: number;
+  key: string;
   rows: DailySignIns[] | null;
   failed: boolean;
 };
 
-// RLS-style scoping happens in the function itself: admins get the whole
-// team's numbers, members only their own.
-export function useSignInStats(days: number) {
-  const [state, setState] = useState<State>({ days, rows: null, failed: false });
+type Options = {
+  // Admins see the whole team by default; this narrows them to their own
+  // sign-ins. Members only ever get their own, whatever is passed.
+  onlyMine?: boolean;
+};
+
+// The scoping happens in the database function itself, not here.
+export function useSignInStats(days: number, { onlyMine = false }: Options = {}) {
+  const key = `${days}:${onlyMine}`;
+  const [state, setState] = useState<State>({ key, rows: null, failed: false });
 
   useEffect(() => {
     let cancelled = false;
 
-    supabase.rpc('sign_ins_by_day', { days, tz: timeZone() }).then(({ data, error }) => {
-      if (cancelled) return;
-      if (error) {
-        setState((prev) => ({ days, rows: prev.rows, failed: true }));
-        return;
-      }
-      setState({
-        days,
-        failed: false,
-        rows: (data ?? []).map((row) => ({
-          bucket: String(row.bucket),
-          sign_ins: Number(row.sign_ins),
-          people: Number(row.people),
-        })),
+    // only_mine is sent only when it's on, so the team chart keeps working
+    // on a database that hasn't had the insights migration yet.
+    supabase
+      .rpc('sign_ins_by_day', { days, tz: timeZone(), ...(onlyMine ? { only_mine: true } : {}) })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          if (__DEV__) console.warn('[sign_ins_by_day]', error.code, error.message);
+          setState((prev) => ({ key, rows: prev.rows, failed: true }));
+          return;
+        }
+        setState({
+          key,
+          failed: false,
+          rows: (data ?? []).map((row) => ({
+            bucket: String(row.bucket),
+            sign_ins: Number(row.sign_ins),
+            people: Number(row.people),
+          })),
+        });
       });
-    });
 
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, onlyMine, key]);
 
   return {
     rows: state.rows,
     failed: state.failed && state.rows === null,
     // A new range is loading: keep showing the old one, dimmed.
-    stale: state.days !== days,
+    stale: state.key !== key,
   };
 }
