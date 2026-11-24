@@ -1,11 +1,14 @@
 import Feather from '@expo/vector-icons/Feather';
+import type { ComponentProps } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
 import { Avatar } from '@/components/avatar';
+import { Button } from '@/components/button';
 import { Card } from '@/components/card';
 import { timeAgo } from '@/lib/format';
 import { colors, fonts, space } from '@/theme';
+import type { AuthEventKind } from '@/types/database';
 
 import { useActivity, type ActivityItem } from './use-activity';
 
@@ -14,10 +17,13 @@ type Props = {
   caption: string;
   currentUserId: string;
   limit?: number;
+  kinds?: readonly AuthEventKind[];
+  onLoadMore?: () => void;
 };
 
-export function ActivityCard({ title, caption, currentUserId, limit = 8 }: Props) {
-  const { items, loading, error } = useActivity(limit);
+export function ActivityCard({ title, caption, currentUserId, limit = 8, kinds, onLoadMore }: Props) {
+  const { items, loading, failed, stale } = useActivity(limit, kinds);
+  const mayHaveMore = Boolean(onLoadMore) && items.length >= limit;
 
   return (
     <Card title={title} caption={caption}>
@@ -25,57 +31,117 @@ export function ActivityCard({ title, caption, currentUserId, limit = 8 }: Props
         <View style={styles.state}>
           <ActivityIndicator color={colors.rust} />
         </View>
-      ) : error ? (
+      ) : failed ? (
         <View style={styles.state}>
-          <AppText variant="small">{error}</AppText>
+          <AppText variant="small">Couldn&apos;t load activity right now.</AppText>
         </View>
       ) : items.length === 0 ? (
         <View style={styles.state}>
-          <AppText variant="small">Nothing here yet. Sign-ins and role changes will show up as they happen.</AppText>
+          <AppText variant="small">Nothing here yet. Entries show up as they happen.</AppText>
         </View>
       ) : (
-        <View>
+        <View style={stale && styles.stale}>
           {items.map((item, index) => (
             <ActivityRow
               key={item.id}
               item={item}
-              isSelf={item.user_id === currentUserId}
+              currentUserId={currentUserId}
               last={index === items.length - 1}
             />
           ))}
         </View>
       )}
+
+      {mayHaveMore ? (
+        <Button label="Load more" size="sm" onPress={() => onLoadMore?.()} loading={stale} style={styles.more} />
+      ) : null}
     </Card>
   );
 }
 
-function ActivityRow({ item, isSelf, last }: { item: ActivityItem; isSelf: boolean; last: boolean }) {
-  const name = isSelf ? 'You' : item.member?.full_name || item.member?.email || 'A teammate';
-  const signedIn = item.kind === 'signed_in';
-  const promoted = item.detail.to === 'admin';
-  const actor = item.actor?.full_name || item.actor?.email || 'an admin';
+type Line = {
+  person: ActivityItem['member'];
+  who: string;
+  text: string;
+  icon: ComponentProps<typeof Feather>['name'];
+  tone: string;
+};
 
-  const sentence = signedIn
-    ? 'signed in with Google'
-    : promoted
-      ? `${isSelf ? 'were' : 'was'} made an admin by ${actor}`
-      : `${isSelf ? 'were' : 'was'} moved to member by ${actor}`;
+function displayName(person: ActivityItem['member']) {
+  return person?.full_name || person?.email || null;
+}
+
+// Turns an event into "<who> <did what>", from the reader's point of view.
+function describe(item: ActivityItem, currentUserId: string): Line {
+  const subjectIsMe = item.user_id === currentUserId;
+  const actorIsMe = item.actor_id === currentUserId;
+  const subject = subjectIsMe ? 'You' : displayName(item.member) ?? 'A teammate';
+  const actor = actorIsMe ? 'you' : displayName(item.actor) ?? 'an admin';
+  const was = subjectIsMe ? 'were' : 'was';
+
+  switch (item.kind) {
+    case 'role_changed':
+      return {
+        person: item.member,
+        who: subject,
+        text:
+          item.detail.to === 'admin'
+            ? `${was} made an admin by ${actor}`
+            : `${was} moved back to member by ${actor}`,
+        icon: 'shield',
+        tone: colors.rust,
+      };
+    case 'status_changed': {
+      const suspended = item.detail.to === 'suspended';
+      return {
+        person: item.member,
+        who: subject,
+        text: suspended
+          ? `${was} suspended by ${actor}`
+          : `${subjectIsMe ? 'had your' : 'had their'} access restored by ${actor}`,
+        icon: suspended ? 'pause' : 'play',
+        tone: suspended ? colors.danger : colors.success,
+      };
+    }
+    case 'domain_added':
+    case 'domain_removed':
+      return {
+        person: item.actor,
+        who: actorIsMe ? 'You' : displayName(item.actor) ?? 'An admin',
+        text: `${item.kind === 'domain_added' ? 'allowed' : 'removed'} @${item.detail.domain ?? 'a domain'}`,
+        icon: item.kind === 'domain_added' ? 'plus' : 'minus',
+        tone: colors.inkSoft,
+      };
+    case 'signed_in':
+    default:
+      return {
+        person: item.member,
+        who: subject,
+        text: 'signed in with Google',
+        icon: 'log-in',
+        tone: colors.success,
+      };
+  }
+}
+
+function ActivityRow({ item, currentUserId, last }: { item: ActivityItem; currentUserId: string; last: boolean }) {
+  const line = describe(item, currentUserId);
 
   return (
     <View style={[styles.row, !last && styles.divider]}>
       <View>
         <Avatar
-          name={item.member?.full_name ?? null}
-          email={item.member?.email ?? '?'}
-          uri={item.member?.avatar_url}
+          name={line.person?.full_name ?? null}
+          email={line.person?.email ?? '?'}
+          uri={line.person?.avatar_url}
           size={36}
         />
-        <View style={[styles.badge, signedIn ? styles.badgeSignIn : styles.badgeRole]}>
-          <Feather name={signedIn ? 'log-in' : 'shield'} size={9} color={colors.surface} />
+        <View style={[styles.badge, { backgroundColor: line.tone }]}>
+          <Feather name={line.icon} size={9} color={colors.surface} />
         </View>
       </View>
       <AppText style={styles.text} numberOfLines={2}>
-        <AppText style={styles.name}>{name}</AppText> {sentence}
+        <AppText style={styles.name}>{line.who}</AppText> {line.text}
       </AppText>
       <AppText variant="small" style={styles.time}>
         {timeAgo(item.created_at)}
@@ -88,6 +154,9 @@ const styles = StyleSheet.create({
   state: {
     paddingVertical: space.xl,
     alignItems: 'center',
+  },
+  stale: {
+    opacity: 0.5,
   },
   row: {
     flexDirection: 'row',
@@ -111,12 +180,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeSignIn: {
-    backgroundColor: colors.success,
-  },
-  badgeRole: {
-    backgroundColor: colors.rust,
-  },
   text: {
     flex: 1,
     fontFamily: fonts.regular,
@@ -130,5 +193,8 @@ const styles = StyleSheet.create({
   },
   time: {
     fontSize: 12,
+  },
+  more: {
+    alignSelf: 'center',
   },
 });

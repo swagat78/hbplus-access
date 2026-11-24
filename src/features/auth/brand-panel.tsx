@@ -1,16 +1,20 @@
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown, useAnimatedStyle, useReducedMotion, withTiming } from 'react-native-reanimated';
 
 import { AppText } from '@/components/app-text';
+import { FloatingOrb } from '@/components/floating-orb';
 import { Wordmark } from '@/components/wordmark';
+import { useCountUp } from '@/hooks/use-count-up';
 import { colors, fonts, radius, space } from '@/theme';
 
 const PILLARS = ['Body', 'Mind', 'Gut'];
 
 // Public numbers from hbplus.fit.
 const STATS = [
-  { value: '1,550+', label: 'lives transformed' },
-  { value: '59,800+', label: 'sessions completed' },
-  { value: '8+', label: 'countries' },
+  { value: 1550, suffix: '+', label: 'lives transformed' },
+  { value: 59800, suffix: '+', label: 'sessions completed' },
+  { value: 8, suffix: '+', label: 'countries' },
 ];
 
 type Props = {
@@ -19,6 +23,16 @@ type Props = {
 };
 
 export function BrandPanel({ compact, topInset = 0 }: Props) {
+  const reduceMotion = useReducedMotion();
+  const [activePillar, setActivePillar] = useState(0);
+
+  // Body -> Mind -> Gut, one at a time: a quiet nod to how HB+ works.
+  useEffect(() => {
+    if (reduceMotion) return;
+    const timer = setInterval(() => setActivePillar((i) => (i + 1) % PILLARS.length), 2400);
+    return () => clearInterval(timer);
+  }, [reduceMotion]);
+
   return (
     <View
       style={[
@@ -27,48 +41,95 @@ export function BrandPanel({ compact, topInset = 0 }: Props) {
         { paddingTop: (compact ? space.xl : space.xxxl) + topInset },
       ]}
     >
-      <View pointerEvents="none" style={[styles.glow, styles.glowRust, compact && styles.glowCompact]} />
-      <View pointerEvents="none" style={[styles.glow, styles.glowMist]} />
+      <View style={styles.glowClip}>
+        <FloatingOrb
+          size={compact ? 320 : 520}
+          color={colors.rust}
+          opacity={0.3}
+          style={compact ? styles.orbRustCompact : styles.orbRust}
+          drift={compact ? 12 : 22}
+          duration={10000}
+        />
+        <FloatingOrb
+          size={360}
+          color={colors.mist}
+          opacity={0.06}
+          style={styles.orbMist}
+          drift={14}
+          duration={12000}
+          delay={1500}
+        />
+      </View>
 
-      <Wordmark size={compact ? 26 : 30} inverted caption="Team space" />
+      <Animated.View entering={FadeInDown.duration(500)}>
+        <Wordmark size={compact ? 26 : 30} inverted caption="Team space" />
+      </Animated.View>
 
       <View style={compact ? styles.copyCompact : styles.copy}>
-        <AppText variant="eyebrow" color="#E3A58C">
-          Internal access
-        </AppText>
-        <AppText
-          variant="display"
-          color={colors.cream}
-          style={compact ? styles.headlineCompact : styles.headline}
-        >
-          The team behind every pathway.
-        </AppText>
-        <AppText variant="body" color="rgba(244,242,240,0.72)" style={styles.lede}>
-          Coaches, physios, nutritionists and everyone who keeps HB+ running. Sign in with your
-          work Google account to continue.
-        </AppText>
+        <Animated.View entering={FadeInDown.duration(500).delay(90)}>
+          <AppText variant="eyebrow" color="#E3A58C">
+            Internal access
+          </AppText>
+        </Animated.View>
+        <Animated.View entering={FadeInDown.duration(550).delay(160)}>
+          <AppText
+            variant="display"
+            color={colors.cream}
+            style={compact ? styles.headlineCompact : styles.headline}
+          >
+            The team behind every pathway.
+          </AppText>
+        </Animated.View>
+        <Animated.View entering={FadeInDown.duration(550).delay(240)}>
+          <AppText variant="body" color="rgba(244,242,240,0.72)" style={styles.lede}>
+            Coaches, physios, nutritionists and everyone who keeps HB+ running. Sign in with your
+            work Google account to continue.
+          </AppText>
+        </Animated.View>
 
-        <View style={styles.pillars}>
-          {PILLARS.map((pillar) => (
-            <View key={pillar} style={styles.pillar}>
-              <AppText style={styles.pillarText}>{pillar}</AppText>
-            </View>
+        <Animated.View entering={FadeInDown.duration(550).delay(320)} style={styles.pillars}>
+          {PILLARS.map((pillar, index) => (
+            <PillarChip key={pillar} label={pillar} active={!reduceMotion && index === activePillar} />
           ))}
-        </View>
+        </Animated.View>
       </View>
 
       {compact ? null : (
-        <View style={styles.stats}>
+        <Animated.View entering={FadeInDown.duration(550).delay(420)} style={styles.stats}>
           {STATS.map((stat) => (
-            <View key={stat.label} style={styles.stat}>
-              <AppText style={styles.statValue}>{stat.value}</AppText>
-              <AppText variant="small" color="rgba(244,242,240,0.55)">
-                {stat.label}
-              </AppText>
-            </View>
+            <Stat key={stat.label} {...stat} />
           ))}
-        </View>
+        </Animated.View>
       )}
+    </View>
+  );
+}
+
+function PillarChip({ label, active }: { label: string; active: boolean }) {
+  const animated = useAnimatedStyle(() => ({
+    backgroundColor: withTiming(active ? 'rgba(217,100,58,0.24)' : 'rgba(217,100,58,0)', { duration: 450 }),
+    borderColor: withTiming(active ? 'rgba(217,100,58,0.7)' : 'rgba(244,242,240,0.22)', { duration: 450 }),
+  }));
+
+  return (
+    <Animated.View style={[styles.pillar, animated]}>
+      <AppText style={styles.pillarText}>{label}</AppText>
+    </Animated.View>
+  );
+}
+
+function Stat({ value, suffix, label }: (typeof STATS)[number]) {
+  const shown = useCountUp(value, 1400);
+
+  return (
+    <View style={styles.stat}>
+      <AppText style={styles.statValue}>
+        {(shown ?? 0).toLocaleString('en-GB')}
+        {suffix}
+      </AppText>
+      <AppText variant="small" color="rgba(244,242,240,0.55)">
+        {label}
+      </AppText>
     </View>
   );
 }
@@ -88,31 +149,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xl,
     paddingBottom: space.xxxl + space.xl,
   },
-  glow: {
+  glowClip: {
     position: 'absolute',
-    borderRadius: 999,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+    pointerEvents: 'none',
   },
-  glowRust: {
-    width: 520,
-    height: 520,
+  orbRust: {
     right: -220,
     top: -180,
-    backgroundColor: colors.rust,
-    opacity: 0.28,
   },
-  glowCompact: {
-    width: 320,
-    height: 320,
+  orbRustCompact: {
     right: -140,
     top: -120,
   },
-  glowMist: {
-    width: 360,
-    height: 360,
+  orbMist: {
     left: -200,
     bottom: -220,
-    backgroundColor: colors.mist,
-    opacity: 0.06,
   },
   copy: {
     maxWidth: 520,
@@ -143,7 +199,6 @@ const styles = StyleSheet.create({
     paddingVertical: space.xs + 1,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(244,242,240,0.22)',
   },
   pillarText: {
     fontFamily: fonts.medium,

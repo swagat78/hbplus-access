@@ -5,14 +5,17 @@ import type { TeamOverview } from '@/types/database';
 
 export function useTeamOverview() {
   const [overview, setOverview] = useState<TeamOverview | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     supabase.rpc('team_overview').then(({ data, error }) => {
-      // A failure here just leaves the tiles showing "—"; it isn't worth
-      // an error banner on the home screen.
-      if (!cancelled && !error && data) setOverview(data);
+      if (cancelled) return;
+      // A failure only leaves the tiles showing "—"; it isn't worth an
+      // error banner on the home screen.
+      if (error || !data) setFailed(true);
+      else setOverview(data);
     });
 
     return () => {
@@ -20,5 +23,5 @@ export function useTeamOverview() {
     };
   }, []);
 
-  return overview;
+  return { overview, failed };
 }

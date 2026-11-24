@@ -20,6 +20,10 @@ export const colors = {
 
   success: '#2F6B3A',
   successTint: '#E8F2EA',
+
+  danger: '#B3261E',
+  dangerPressed: '#8E1F19',
+  dangerTint: '#FBEAE8',
 } as const;
 
 export const space = {
@@ -52,4 +56,5 @@ export const layout = {
   wideBreakpoint: 960,
   sidebarBreakpoint: 1100,
   sidebarWidth: 264,
+  sidebarCollapsedWidth: 76,
 } as const;

@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
+import { FloatingOrb } from '@/components/floating-orb';
 import { useLayout } from '@/hooks/use-layout';
 import { getEmailDomain } from '@/lib/domain';
 import { firstName, greeting } from '@/lib/format';
@@ -22,19 +23,24 @@ export function HeroBanner({ profile, now }: Props) {
 
   return (
     <View style={[styles.banner, roomy && styles.bannerRoomy]}>
-      <View pointerEvents="none" style={[styles.glow, styles.glowRust]} />
-      <View pointerEvents="none" style={[styles.glow, styles.glowMist]} />
+      <View style={styles.glowClip}>
+        <FloatingOrb size={420} color={colors.rust} opacity={0.34} style={styles.orbRust} drift={18} />
+        <FloatingOrb size={260} color={colors.mist} opacity={0.07} style={styles.orbMist} drift={12} delay={1200} />
+      </View>
 
       <View style={styles.copy}>
-        <AppText variant="eyebrow" color="#E3A58C">
-          {date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </AppText>
+        <View style={styles.eyebrowRow}>
+          <View style={styles.liveDot} />
+          <AppText variant="eyebrow" color="#E3A58C">
+            {date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </AppText>
+        </View>
         <AppText variant={roomy ? 'display' : 'title'} color={colors.cream}>
           {greeting(date)}, {firstName(profile.full_name, profile.email)}.
         </AppText>
         <AppText variant="body" color="rgba(244,242,240,0.7)" style={styles.lede}>
           {isAdmin
-            ? 'You have admin access to the HB+ team space. Keep an eye on who is signing in and who can manage roles.'
+            ? 'You have admin access. The admin panel has members, access rules and the full audit log.'
             : 'Welcome to the HB+ team space. Your account, your recent activity and the HB+ pathways are all here.'}
         </AppText>
       </View>
@@ -79,30 +85,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: space.xxl + space.sm,
   },
-  glow: {
+  glowClip: {
     position: 'absolute',
-    borderRadius: 999,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+    pointerEvents: 'none',
   },
-  glowRust: {
-    width: 420,
-    height: 420,
+  orbRust: {
     right: -120,
-    top: -260,
-    backgroundColor: colors.rust,
-    opacity: 0.35,
+    top: -250,
   },
-  glowMist: {
-    width: 260,
-    height: 260,
+  orbMist: {
     left: -120,
-    bottom: -180,
-    backgroundColor: colors.mist,
-    opacity: 0.06,
+    bottom: -170,
   },
   copy: {
     flexShrink: 1,
     gap: space.sm,
     maxWidth: 620,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#7BC48A',
   },
   lede: {
     marginTop: space.xs,

@@ -1,4 +1,7 @@
+import Feather from '@expo/vector-icons/Feather';
+import type { ComponentProps } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/app-text';
@@ -24,7 +27,10 @@ export default function LoginScreen() {
       : 'Waiting for Google…';
 
   const form = (
-    <View style={[styles.form, !isWide && styles.formCard]}>
+    <Animated.View
+      entering={FadeInDown.duration(550).delay(200)}
+      style={[styles.form, !isWide && styles.formCard]}
+    >
       <View style={styles.heading}>
         <AppText variant="eyebrow">Sign in</AppText>
         <AppText variant="title">Welcome back</AppText>
@@ -41,7 +47,11 @@ export default function LoginScreen() {
         />
       ) : null}
 
-      {error ? <Notice message={error} onDismiss={clearError} /> : null}
+      {error ? (
+        <Animated.View entering={FadeIn.duration(220)}>
+          <Notice message={error} onDismiss={clearError} />
+        </Animated.View>
+      ) : null}
 
       <GoogleButton
         onPress={signIn}
@@ -52,11 +62,14 @@ export default function LoginScreen() {
 
       <View style={styles.divider} />
 
-      <AppText variant="small">
-        Access is limited to {ALLOWED_DOMAIN} accounts and checked again on our servers after Google
-        signs you in. Trouble getting in? Ask your HB+ admin.
-      </AppText>
-    </View>
+      <View style={styles.facts}>
+        <Fact icon="at-sign" text={`Only @${ALLOWED_DOMAIN} Google accounts get in`} />
+        <Fact icon="lock" text="Signed in through Google with OAuth 2.0 and PKCE" />
+        <Fact icon="server" text="Checked again on our servers, not just in this app" />
+      </View>
+
+      <AppText variant="small">Trouble getting in? Ask your HB+ admin.</AppText>
+    </Animated.View>
   );
 
   if (isWide) {
@@ -79,6 +92,19 @@ export default function LoginScreen() {
       <BrandPanel compact topInset={insets.top} />
       <View style={[styles.overlap, { paddingHorizontal: gutter }]}>{form}</View>
     </ScrollView>
+  );
+}
+
+function Fact({ icon, text }: { icon: ComponentProps<typeof Feather>['name']; text: string }) {
+  return (
+    <View style={styles.fact}>
+      <View style={styles.factIcon}>
+        <Feather name={icon} size={13} color={colors.rust} />
+      </View>
+      <AppText variant="small" style={styles.factText}>
+        {text}
+      </AppText>
+    </View>
   );
 }
 
@@ -123,5 +149,25 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: colors.line,
+  },
+  facts: {
+    gap: space.md,
+  },
+  fact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+  },
+  factIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.rustTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  factText: {
+    flex: 1,
+    color: colors.inkSoft,
   },
 });

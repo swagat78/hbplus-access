@@ -8,7 +8,7 @@ import { AppText } from './app-text';
 type Props = {
   label: string;
   onPress: () => void;
-  tone?: 'primary' | 'secondary' | 'ghost';
+  tone?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'md' | 'sm';
   loading?: boolean;
   disabled?: boolean;
@@ -28,7 +28,7 @@ export function Button({
 }: Props) {
   const [hovered, setHovered] = useState(false);
   const inactive = disabled || loading;
-  const textColor = tone === 'primary' ? colors.surface : colors.ink;
+  const textColor = tone === 'primary' || tone === 'danger' ? colors.surface : colors.ink;
 
   return (
     <Pressable
@@ -85,6 +85,9 @@ const styles = StyleSheet.create({
   ghost: {
     backgroundColor: 'transparent',
   },
+  danger: {
+    backgroundColor: colors.danger,
+  },
   inactive: {
     opacity: 0.5,
   },
@@ -101,10 +104,12 @@ const hoverStyles = StyleSheet.create({
   primary: { backgroundColor: colors.rustPressed },
   secondary: { borderColor: colors.faint },
   ghost: { backgroundColor: colors.sand },
+  danger: { backgroundColor: colors.dangerPressed },
 });
 
 const pressedStyles = StyleSheet.create({
   primary: { backgroundColor: colors.rustPressed },
   secondary: { backgroundColor: colors.sand },
   ghost: { backgroundColor: colors.line },
+  danger: { backgroundColor: colors.dangerPressed },
 });

@@ -11,15 +11,15 @@ export function AdminCallout() {
       <AppText variant="eyebrow" color="#E3A58C">
         Admin
       </AppText>
-      <AppText style={styles.title}>Manage who can do what.</AppText>
+      <AppText style={styles.title}>Run the team space.</AppText>
       <AppText variant="small" color="rgba(244,242,240,0.7)">
-        Promote or demote admins and review the audit log. Every change is checked and recorded by
-        the database, not just this screen.
+        Promote or suspend members, decide which email domains can sign in, and read the full audit
+        log. Every change is checked and recorded by the database.
       </AppText>
       <Button
-        label="Open team & roles"
+        label="Open admin panel"
         tone="primary"
-        onPress={() => router.navigate('/team')}
+        onPress={() => router.navigate({ pathname: '/admin', params: { tab: 'overview' } })}
         style={styles.button}
       />
     </View>
