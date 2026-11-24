@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import { colors } from '@/theme';
@@ -16,21 +17,26 @@ export function SessionRing({ fraction, size = 40 }: Props) {
   const circumference = 2 * Math.PI * r;
   const clamped = Math.min(1, Math.max(0, fraction));
 
+  // Decorative: the tile already says how many minutes are left. The hiding
+  // lives on a View because react-native-svg hands its props straight to the
+  // DOM on web, where accessibilityElementsHidden isn't a real attribute.
   return (
-    <Svg width={size} height={size} accessibilityElementsHidden importantForAccessibility="no">
-      <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.rustTint} strokeWidth={stroke} fill="none" />
-      <Circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        stroke={colors.rust}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        fill="none"
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={circumference * (1 - clamped)}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </Svg>
+    <View aria-hidden>
+      <Svg width={size} height={size}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.rustTint} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={colors.rust}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={circumference * (1 - clamped)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+    </View>
   );
 }
