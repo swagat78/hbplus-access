@@ -4,7 +4,7 @@ A small app for the HB+ team that runs on Android, iOS and the web from one Expo
 
 > Access restricted. Please login using your official domain email.
 
-**Live demo:** `https://<your-site>.netlify.app`
+**Live demo:** https://hbplus-team-space.netlify.app
 
 Built with Expo SDK 58 and Expo Router, React Native for Web, Supabase (Auth and Postgres), Google OAuth 2.0 and TypeScript.
 
