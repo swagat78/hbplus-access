@@ -140,8 +140,13 @@ check('role change records actor and from/to',
   JSON.stringify(change));
 
 r = await attempt(`select public.team_overview() v`);
-check('team_overview counts the team', JSON.stringify(r.rows?.[0]?.v) === JSON.stringify({ admins: 2, members: 2, active_week: 2 }),
-  r.error ?? JSON.stringify(r.rows[0].v));
+const ov = r.rows?.[0]?.v;
+check('team_overview counts the team',
+  ov?.members === 2 && ov?.admins === 2 && ov?.active_week === 2 && ov?.suspended === 0 && ov?.domains === 1,
+  r.error ?? JSON.stringify(ov));
+check('team_overview directory has names and photos but no emails',
+  ov?.recent?.length === 2 && ov.recent.every((p) => p.name && !('email' in p)),
+  JSON.stringify(ov?.recent));
 
 await as(null);
 await db.exec(`update public.profiles set role = 'user' where id = '${coach.id}'`);
@@ -159,6 +164,103 @@ r = await attempt(`select public.team_overview()`);
 check('team_overview refuses a non-allowed token', !!r.error, r.error ?? 'allowed!');
 r = await attempt(`select id from public.auth_events`);
 check('non-allowed token reads no activity', r.rows?.length === 0, r.error ?? `${r.rows.length} rows`);
+
+// --- sign-in chart data ---
+await as(admin);
+r = await attempt(`select bucket, sign_ins, people from public.sign_ins_by_day(14, 'Asia/Kolkata')`);
+check('sign_ins_by_day returns one row per day', r.rows?.length === 14, r.error ?? `${r.rows.length} rows`);
+const today = r.rows?.[13];
+check('admin chart counts the whole team today', Number(today?.sign_ins) === 3 && Number(today?.people) === 2,
+  r.error ?? JSON.stringify(today));
+await as(coach);
+r = await attempt(`select sum(sign_ins)::int n from public.sign_ins_by_day(14, 'UTC')`);
+check('member chart only counts their own sign-ins', r.rows?.[0]?.n === 2, r.error ?? JSON.stringify(r.rows[0]));
+r = await attempt(`select count(*)::int n from public.sign_ins_by_day(500, 'UTC')`);
+check('chart range is capped at 90 days', r.rows?.[0]?.n === 90, r.error ?? JSON.stringify(r.rows[0]));
+
+// --- suspend / restore ---
+await as(coach);
+r = await attempt(`select public.set_member_status($1, 'suspended')`, [admin.id]);
+check('member cannot suspend anyone', /Only admins/.test(r.error ?? ''), r.error ?? 'allowed!');
+
+await as(admin);
+r = await attempt(`select public.set_member_status($1, 'suspended')`, [admin.id]);
+check('admin cannot suspend themselves', /own access/.test(r.error ?? ''), r.error ?? 'allowed!');
+r = await attempt(`select public.set_member_status($1, 'suspended')`, [coach.id]);
+check('admin can suspend a member', !r.error, r.error);
+r = await attempt(`select detail from public.auth_events where kind = 'status_changed'`);
+check('suspension is logged', r.rows?.[0]?.detail?.to === 'suspended', r.error ?? JSON.stringify(r.rows));
+
+await as(coach);
+r = await attempt(`select status from public.profiles where id = $1`, [coach.id]);
+check('suspended member can still read their own status', r.rows?.[0]?.status === 'suspended', r.error ?? JSON.stringify(r.rows));
+r = await attempt(`select id from public.auth_events`);
+check('suspended member reads no activity', r.rows?.length === 0, r.error ?? `${r.rows.length} rows`);
+r = await attempt(`select public.team_overview()`);
+check('suspended member cannot read team numbers', !!r.error, r.error ?? 'allowed!');
+r = await attempt(`select * from public.sign_ins_by_day()`);
+check('suspended member cannot read chart data', !!r.error, r.error ?? 'allowed!');
+
+// A suspended admin keeps the role on paper but loses the powers.
+await as(null);
+await db.exec(`update public.profiles set role = 'admin' where id = '${coach.id}'`);
+await as(coach);
+r = await attempt(`select id from public.profiles`);
+check('suspended admin cannot read other profiles', r.rows?.length === 1, r.error ?? `${r.rows.length} rows`);
+r = await attempt(`select public.set_member_role($1, 'user')`, [admin.id]);
+check('suspended admin cannot change roles', /Only admins/.test(r.error ?? ''), r.error ?? 'allowed!');
+await as(null);
+await db.exec(`update public.profiles set role = 'user' where id = '${coach.id}'`);
+
+await as(admin);
+r = await attempt(`select public.set_member_status($1, 'active')`, [coach.id]);
+check('admin can restore a member', !r.error, r.error);
+await as(coach);
+r = await attempt(`select public.team_overview() v`);
+check('restored member is back in', r.rows?.[0]?.v?.members === 2, r.error);
+
+// --- allowed domains ---
+await as(coach);
+r = await attempt(`select public.allowed_domain_list() v`);
+check('any signed-in member can read the domain list', JSON.stringify(r.rows?.[0]?.v) === '["hbplus.fit"]', r.error ?? JSON.stringify(r.rows[0]));
+r = await attempt(`select public.add_allowed_domain('hop.studio')`);
+check('member cannot add a domain', /Only admins/.test(r.error ?? ''), r.error ?? 'allowed!');
+r = await attempt(`select * from public.admin_domains()`);
+check('member cannot list domain details', /Only admins/.test(r.error ?? ''), r.error ?? 'allowed!');
+
+await as({ id: coach.id, email: 'coach@gmail.com' });
+r = await attempt(`select public.allowed_domain_list() v`);
+check('a rejected Gmail session can still read the list (so the app can explain why)', !r.error, r.error);
+
+await as(admin);
+r = await attempt(`select public.add_allowed_domain('  @Hop.Studio ')`);
+check('admin can add a domain (normalised)', !r.error, r.error);
+r = await attempt(`select domain, members from public.admin_domains()`);
+check('admin_domains lists domains with member counts',
+  r.rows?.map((d) => `${d.domain}:${d.members}`).join(',') === 'hbplus.fit:2,hop.studio:0', r.error ?? JSON.stringify(r.rows));
+r = await attempt(`select actor_id, user_id, detail from public.auth_events where kind = 'domain_added'`);
+check('domain change is logged without a subject member',
+  r.rows?.[0]?.actor_id === admin.id && r.rows[0].user_id === null && r.rows[0].detail.domain === 'hop.studio',
+  r.error ?? JSON.stringify(r.rows));
+for (const [bad, why] of [['hop.studio', /already on the list/], ['not a domain', /look like a domain/], ['gmail.com', /public email provider/], ['localhost', /look like a domain/]]) {
+  r = await attempt(`select public.add_allowed_domain($1)`, [bad]);
+  check(`add_allowed_domain rejects "${bad}"`, why.test(r.error ?? ''), r.error ?? 'allowed!');
+}
+r = await attempt(`select public.remove_allowed_domain('hbplus.fit')`);
+check('admin cannot remove their own domain', /own account uses it/.test(r.error ?? ''), r.error ?? 'allowed!');
+r = await attempt(`select public.remove_allowed_domain('nope.example')`);
+check('removing an unknown domain errors', /isn't on the list/.test(r.error ?? ''), r.error ?? 'allowed!');
+r = await attempt(`select public.remove_allowed_domain('hop.studio')`);
+check('admin can remove another domain', !r.error, r.error);
+r = await attempt(`select public.allowed_domain_list() v`);
+check('domain list is back to one', JSON.stringify(r.rows?.[0]?.v) === '["hbplus.fit"]', r.error ?? JSON.stringify(r.rows[0]));
+
+await db.exec('reset role; set role anon');
+for (const fn of ['allowed_domain_list()', 'sign_ins_by_day()', `set_member_status(gen_random_uuid(), 'active')`, `add_allowed_domain('x.com')`]) {
+  r = await attempt(`select public.${fn}`);
+  check(`anon cannot call ${fn.split('(')[0]}`, /permission denied/.test(r.error ?? ''), r.error ?? 'allowed!');
+}
+await db.exec('reset role');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
