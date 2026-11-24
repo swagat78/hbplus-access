@@ -16,6 +16,8 @@ Everyone starts as a normal member. The admin panel only shows up for admins, an
 
 ## Setup instructions
 
+These steps are for running your own copy, so `<your-site>` and `<project-ref>` below mean your own Netlify site and Supabase project. (The demo above is `hbplus-team-space.netlify.app`.)
+
 You'll need Node 22+, a Supabase project (the free tier is fine) and a Google Cloud project. For mobile, an Android emulator, the iOS Simulator or Expo Go on your phone all work.
 
 **Google Cloud**
@@ -42,7 +44,7 @@ You'll need Node 22+, a Supabase project (the free tier is fine) and a Google Cl
 
    If you use the Supabase CLI, `supabase db push` runs them all for you. If the dashboard tiles show a dash instead of numbers later on, one of these hasn't been run.
 4. Authentication → Auth Hooks → Add hook → **Before User Created**, type Postgres, function `public.hook_before_user_created`. This one's optional. Without it the trigger still blocks other domains, Supabase just returns a vaguer error, which the app turns back into the right message.
-5. Log in once, then make yourself an admin:
+5. Log in once, then make yourself an admin. Only someone with access to the project's SQL Editor can do this, which is the point:
    ```sql
    update public.profiles set role = 'admin' where email = 'you@hbplus.fit';
    ```
