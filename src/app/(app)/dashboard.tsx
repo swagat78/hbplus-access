@@ -20,6 +20,7 @@ import { TeamCard } from '@/features/dashboard/team-card';
 import { useTeamOverview } from '@/features/dashboard/use-team-overview';
 import { useLayout } from '@/hooks/use-layout';
 import { useNow } from '@/hooks/use-now';
+import { usePageTitle } from '@/hooks/use-page-title';
 import { ALLOWED_DOMAIN, getEmailDomain } from '@/lib/domain';
 import { minutesUntil } from '@/lib/format';
 import { space } from '@/theme';
@@ -32,6 +33,7 @@ export default function DashboardScreen() {
   // 30-day count, in one request.
   const mine = useSignInStats(90, { onlyMine: true });
   const now = useNow();
+  usePageTitle('Overview · HB+');
 
   if (!profile || !session) return null;
 

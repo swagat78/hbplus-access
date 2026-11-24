@@ -10,6 +10,7 @@ import { AdminOverview } from '@/features/admin/admin-overview';
 import { AuditLogPanel } from '@/features/admin/audit-log-panel';
 import { MembersPanel } from '@/features/admin/members-panel';
 import { ADMIN_TABS, toAdminTab, type AdminTab } from '@/features/shell/nav';
+import { usePageTitle } from '@/hooks/use-page-title';
 import { space } from '@/theme';
 
 const PANELS: Record<AdminTab, ComponentType> = {
@@ -25,6 +26,8 @@ export default function AdminScreen() {
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const current = toAdminTab(tab);
   const Panel = PANELS[current];
+  const tabLabel = ADMIN_TABS.find((t) => t.value === current)?.label ?? 'Overview';
+  usePageTitle(`${tabLabel} · Admin · HB+`);
 
   return (
     <Page

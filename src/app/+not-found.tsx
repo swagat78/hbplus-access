@@ -3,9 +3,12 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
+import { usePageTitle } from '@/hooks/use-page-title';
 import { colors, space } from '@/theme';
 
 export default function NotFound() {
+  usePageTitle('Page not found · HB+');
+
   return (
     <View style={styles.root}>
       <AppText variant="eyebrow">404</AppText>

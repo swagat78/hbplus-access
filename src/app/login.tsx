@@ -10,6 +10,7 @@ import { Notice } from '@/components/notice';
 import { useAuth } from '@/features/auth/auth-provider';
 import { BrandPanel } from '@/features/auth/brand-panel';
 import { useLayout } from '@/hooks/use-layout';
+import { usePageTitle } from '@/hooks/use-page-title';
 import { ALLOWED_DOMAIN } from '@/lib/domain';
 import { env } from '@/lib/env';
 import { colors, fonts, radius, space } from '@/theme';
@@ -18,6 +19,7 @@ export default function LoginScreen() {
   const { status, isSigningIn, error, signIn, clearError } = useAuth();
   const { isWide, gutter } = useLayout();
   const insets = useSafeAreaInsets();
+  usePageTitle('Sign in · HB+');
 
   const verifying = status === 'verifying';
   const loadingLabel = verifying
